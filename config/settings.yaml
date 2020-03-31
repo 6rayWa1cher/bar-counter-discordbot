@@ -1,0 +1,12 @@
+default:
+  COMMAND_PREFIX: '#'
+  JOKE_SOURCE:
+    ru_RU: "https://nekdo.ru/random/"
+  LANG:
+    ru_RU:
+      name: russian
+      drink_info: "{0}, одна порция равна {1}мл"
+      default_drinks:
+        - name: водка
+          portion: 250
+          intoxication: 30
