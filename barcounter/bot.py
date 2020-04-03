@@ -30,5 +30,6 @@ def start():
     token = settings.TOKEN
     bot = commands.Bot(command_prefix=settings.COMMAND_PREFIX)
     bot.load_extension("barcounter.cogs.drinkcog")
+    bot.load_extension("barcounter.cogs.roleregistrarcog")
     logging.getLogger('barcounter').info("Connecting...")
     bot.run(token)

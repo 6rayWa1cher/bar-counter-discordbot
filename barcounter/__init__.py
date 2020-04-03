@@ -1,8 +1,10 @@
 import logging
 
+from peewee import SqliteDatabase
+
+from barcounter.cogs import *
 from . import bot
 
 bot.setup_logger()
 log = logging.getLogger('barcounter')
-
-from barcounter.cogs import drinkcog
+db = SqliteDatabase('sqlite.db')
