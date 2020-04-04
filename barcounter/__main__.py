@@ -1,6 +1,6 @@
 from . import bot, dbentities, db
 
-db.connect()
-db.create_tables([dbentities.Drink])
+with db:
+    db.create_tables([dbentities.Drink, dbentities.Person])
 
 bot.start()
