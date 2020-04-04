@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
+import aiocron as aiocron
 from discord import Guild, Member, Forbidden, NotFound, HTTPException
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.ext.commands import Context
 
 from barcounter import confutils as conf, log, db
@@ -19,6 +20,7 @@ PORTION_MAX_SIZE = conf.limitation("portion_max_size")
 DEFAULT_INTOXICATION = 20
 DEFAULT_PORTION_SIZE = 100
 DEFAULT_PORTIONS_PER_DAY = 10
+message_dict = dict()
 
 
 async def consume_drink(ctx: Context, person: Person, drink: Drink):
@@ -59,6 +61,34 @@ def check_guild_drink_count(gid: int):
     return Drink.select().where(Drink.server == gid).count() < DRINKS_PER_SERVER
 
 
+@aiocron.crontab("0 0 * * *")
+async def restock():
+    (Drink.update(portions_left=Drink.portions_per_day)).execute()
+    log.info("Restocked every server")
+
+
+@aiocron.crontab("*/10 * * * *")
+async def erase():
+    now = datetime.today()
+    for mid, tpl in message_dict.items():
+        ctx, message, user, time, drink = tpl
+        if now > time:
+            try:
+                await message.delete()
+            except Forbidden or NotFound or HTTPException:
+                pass
+            finally:
+                del message_dict[mid]
+                log.info("Deleted message {0} on {1} by time exceeding".format(message.id, ctx.guild.id))
+
+
+@aiocron.crontab("* * * * *")
+async def deintoxication():
+    delta = 1
+    (Person.update(intoxication=Person.intoxication - delta).where(Person.intoxication >= delta)).execute()
+    (Person.update(intoxication=0).where(Person.intoxication < delta)).execute()
+
+
 class DrinkCog(commands.Cog):
     """
     Commands to give you a virtual drink
@@ -66,7 +96,6 @@ class DrinkCog(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.message_dict = dict()
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -89,10 +118,10 @@ class DrinkCog(commands.Cog):
         log.debug("Got reaction {0} by {1} on {2}".format(str(reaction), user, str(reaction.message.guild)))
         message = reaction.message
         mid = message.id
-        if mid not in self.message_dict:
+        if mid not in message_dict:
             return
-        ctx, _, expected, _, drink = self.message_dict[mid]
-        if user != expected or message.id not in self.message_dict:
+        ctx, _, expected, _, drink = message_dict[mid]
+        if user != expected or message.id not in message_dict:
             return
         if str(reaction) == conf.lang("ru_RU", "ok-emoji"):
             log.debug("Parsed as OK")
@@ -102,7 +131,7 @@ class DrinkCog(commands.Cog):
             except Forbidden or NotFound or HTTPException:
                 pass
             finally:
-                del self.message_dict[message.id]
+                del message_dict[message.id]
         elif str(reaction) == conf.lang("ru_RU", "no-emoji"):
             log.debug("Parsed as NO")
             try:
@@ -110,21 +139,7 @@ class DrinkCog(commands.Cog):
             except Forbidden or NotFound or HTTPException:
                 pass
             finally:
-                del self.message_dict[message.id]
-
-    @tasks.loop(minutes=10)
-    async def erase(self):
-        now = datetime.today()
-        for mid, tpl in self.message_dict.items():
-            ctx, message, user, time, drink = tpl
-            if now > time:
-                try:
-                    await message.delete()
-                except Forbidden or NotFound or HTTPException:
-                    pass
-                finally:
-                    del self.message_dict[mid]
-                    log.info("Deleted message {0} on {1} by time exceeding".format(message.id, ctx.guild.id))
+                del message_dict[message.id]
 
     @commands.command()
     @commands.guild_only()
