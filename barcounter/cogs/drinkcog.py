@@ -89,6 +89,16 @@ async def deintoxication():
     (Person.update(intoxication=0).where(Person.intoxication < delta)).execute()
 
 
+async def add_default_drinks(guild):
+    default_drinks = conf.lang_raw("ru_RU", "default_drinks")
+    with db.atomic():
+        for default_drink in default_drinks:
+            Drink.create(server=guild.id, name=default_drink.name, intoxication=default_drink.intoxication,
+                         portion_size=default_drink.portion, portions_per_day=default_drink.portions_per_day,
+                         portions_left=default_drink.portions_per_day)
+    log.info("Added drinks to {0}".format(guild.id))
+
+
 class DrinkCog(commands.Cog):
     """
     Commands to give you a virtual drink
@@ -104,13 +114,7 @@ class DrinkCog(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
         log.info("Joined guild {0}".format(guild.id))
-        default_drinks = conf.lang("ru_RU", "default_drinks")
-        with db.atomic():
-            for default_drink in default_drinks:
-                Drink.create(server=guild.id, name=default_drink.name, intoxication=default_drink.intoxication,
-                             portion_size=default_drink.portion, portions_per_day=default_drink.portions_per_day,
-                             portions_left=default_drink.portions_per_day)
-        log.info("Added drinks to {0}".format(guild.id))
+        await add_default_drinks(guild)
         return True
 
     @commands.Cog.listener()
@@ -120,27 +124,33 @@ class DrinkCog(commands.Cog):
         mid = message.id
         if mid not in message_dict:
             return
-        ctx, _, expected, _, drink = message_dict[mid]
-        if user != expected or message.id not in message_dict:
+        ctx, _, expected_all, _, drink = message_dict[mid]
+        if user not in expected_all or message.id not in message_dict:
             return
-        ctx.author = expected
         if str(reaction) == conf.lang("ru_RU", "ok-emoji"):
+            expected_all.remove(user)
             log.debug("Parsed as OK")
-            await self.drink(ctx, drink.name)
-            try:
-                await message.delete()
-            except Forbidden or NotFound or HTTPException:
-                pass
-            finally:
-                del message_dict[message.id]
+            ctx.author = user
+            await self.drink(ctx, drink_name=drink.name)
+            if not len(expected_all):
+                try:
+                    await message.delete()
+                except Forbidden or NotFound or HTTPException:
+                    pass
+                finally:
+                    del message_dict[message.id]
+                log.info("Removed message {0}".format(message.id, ))
         elif str(reaction) == conf.lang("ru_RU", "no-emoji"):
             log.debug("Parsed as NO")
-            try:
-                await message.delete()
-            except Forbidden or NotFound or HTTPException:
-                pass
-            finally:
-                del message_dict[message.id]
+            expected_all.remove(user)
+            if not len(expected_all):
+                try:
+                    await message.delete()
+                except Forbidden or NotFound or HTTPException:
+                    pass
+                finally:
+                    del message_dict[message.id]
+                log.info("Removed message {0}".format(message.id, ))
 
     @commands.command()
     @commands.guild_only()
@@ -149,24 +159,30 @@ class DrinkCog(commands.Cog):
         Returns the list with available drinks
         """
         drinks = Drink.select().where(Drink.server == ctx.guild.id)
-        out = ""
-        for drink in drinks:
-            out += conf.lang("ru_RU", "drink_info").format(str(drink.name), str(drink.portion_size))
-            out += '\n'
-        await ctx.send(out)
+        # out = ""
+        # for drink in drinks:
+        #     out += conf.lang("ru_RU", "drink_info").format(str(drink.name), str(drink.portion_size))
+        #     out += '\n'
+        out = "\n".join([
+            conf.lang("ru_RU", "drink_info").format(drink.name, drink.portion_size, drink.portions_left,
+                                                    drink.portions_per_day)
+            for drink in drinks
+        ])
+        if out != "":
+            await ctx.send(out)
+        else:
+            await ctx.send(conf.lang("ru_RU", "no_drinks"))
 
     @commands.command()
     @commands.guild_only()
     # @commands.bot_has_permissions(move_members=True)
-    async def drink(self, ctx: Context, drink_name: str):
+    async def drink(self, ctx: Context, *, drink_name: str):
         """
         Drinks a drink and tails some random joke.
 
         Parameters:
         drink_name: name of the drink, not empty
         """
-        if ctx.invoked_subcommand is not None:
-            return
         if drink_name is None or len(drink_name) > DRINK_NAME_LENGTH:
             await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
             return
@@ -266,7 +282,7 @@ class DrinkCog(commands.Cog):
     @commands.command()
     @commands.guild_only()
     # @commands.bot_has_permissions(add_reactions=True, send_messages=True, move_members=True)
-    async def serve(self, ctx: Context, drink_name: str, to: Member):
+    async def serve(self, ctx: Context, drink_name: str, to: commands.Greedy[Member]):
         """
         Trying to give a drink to the member.
 
@@ -292,17 +308,18 @@ class DrinkCog(commands.Cog):
 
         await asyncio.wait(
             {msg.add_reaction(conf.lang("ru_RU", "ok-emoji")), msg.add_reaction(conf.lang("ru_RU", "no-emoji"))})
-        message_dict[msg.id] = (ctx, msg, to, datetime.today() + timedelta(0, 60 * 10), drink)
+        message_dict[msg.id] = (ctx, msg, set(to), datetime.today() + timedelta(0, 60 * 10), drink)
 
     @commands.command()
     @commands.has_role("barman")
     @commands.guild_only()
-    async def reset(self, ctx: Context):
+    async def reset(self, ctx: Context, to_defaults: bool = False):
         """
         Reset all drinks to defaults. Barman role required.
         """
         Drink.delete().where(Drink.server == ctx.guild.id).execute()
-        await self.on_guild_join(ctx.guild)
+        if to_defaults:
+            await add_default_drinks(ctx.guild)
 
 
 def setup(bot):

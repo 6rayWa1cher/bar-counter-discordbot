@@ -12,13 +12,22 @@ logger = log
 
 def _ru_ru_get_joke():
     try:
-        res = requests.get(settings.JOKE_SOURCE["ru_RU"])
+        package = settings.JOKE_SOURCE["ru_RU"]
+        url = package.url
+        name = package.name
+        res = requests.get(url)
         res.encoding = 'utf-8'
         res.raise_for_status()
         soup = BeautifulSoup(res.content, features="html.parser")
         lst = soup.select(".text[id]")
         item = random.choice(lst)
-        return item.text
+        out = ""
+        for content in item.contents:
+            if content.name == "br":
+                out += '\n'
+            else:
+                out += str(content)
+        return out + "\n(c) " + name
     except HTTPError or ParserRejectedMarkup or IndexError as e:
         logger.error(str(e))
         return None

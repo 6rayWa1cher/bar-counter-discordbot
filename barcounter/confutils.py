@@ -4,6 +4,13 @@ from collections import Iterable
 from dynaconf import settings
 
 
+def lang_raw(lang_code, *path):
+    package = settings.LANG[lang_code]
+    for p in path:
+        package = package[p]
+    return package
+
+
 def lang(lang_code, *path):
     package = settings.LANG[lang_code]
     for p in path:

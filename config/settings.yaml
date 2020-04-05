@@ -4,7 +4,9 @@ default:
   DB_LOCATION: fill
   COMMAND_PREFIX: '?'
   JOKE_SOURCE:
-    ru_RU: "https://nekdo.ru/random/"
+    ru_RU:
+      name: "nekdo.ru"
+      url: "https://nekdo.ru/random/"
   LIMITATIONS:
     drinks_per_server: 1024
     drink_name_length: 255
@@ -26,7 +28,8 @@ default:
       restocked_all: "Все запасы восполнены! И снова пить :D"
       serve_message:
         - "{author} предложил вам выпить {drink}, {portion_size}мл. Хотите выпить?"
-      drink_info: "{0}, одна порция равна {1}мл"
+      drink_info: "{0}, одна порция равна {1}мл, {2}/{3}"
+      no_drinks: "Нет напитков!"
       joke_not_loaded: "Шутеечка не подъехала :("
       too_many_drinks: "Не могу добавить новый напиток: превышен лимит в {0} позиций"
       pre_overdrink:
