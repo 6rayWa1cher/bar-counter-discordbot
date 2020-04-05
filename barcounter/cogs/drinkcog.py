@@ -242,7 +242,7 @@ class DrinkCog(commands.Cog):
         Parameters:
         drink_name: name of the drink, not empty
         """
-        if drink_name in None or len(drink_name) > DRINK_NAME_LENGTH:
+        if drink_name is None or len(drink_name) > DRINK_NAME_LENGTH:
             await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
             return
         try:
