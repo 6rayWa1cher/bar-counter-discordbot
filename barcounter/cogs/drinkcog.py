@@ -54,7 +54,7 @@ async def consume_drink(ctx: Context, person: Person, drink: Drink):
 
 
 def get_person_or_create(gid: int, uid: int):
-    return Person.get_or_create(server=gid, id=uid, defaults={"intoxication": 0})[0]
+    return Person.get_or_create(server=gid, uid=uid, defaults={"intoxication": 0})[0]
 
 
 def check_guild_drink_count(gid: int):
