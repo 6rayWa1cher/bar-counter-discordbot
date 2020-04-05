@@ -207,6 +207,8 @@ class DrinkCog(commands.Cog):
             await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
         elif not check_guild_drink_count(ctx.guild.id):
             await ctx.send(conf.lang("ru_RU", "too_many_drinks").format(DRINKS_PER_SERVER))
+        elif Drink.select().where(Drink.server == ctx.guild.id and Drink.name == drink_name).count() > 0:
+            await ctx.send(conf.lang("ru_RU", "duplicate_drink").format(drink_name))
         else:
             Drink.create(server=ctx.guild.id, name=drink_name, intoxication=intoxication,
                          portion_size=portion_size,
