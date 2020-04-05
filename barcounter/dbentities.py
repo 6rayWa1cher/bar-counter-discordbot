@@ -9,7 +9,7 @@ class AbstractModel(Model):
 
 
 class Person(AbstractModel):
-    id = IntegerField()
+    uid = IntegerField()
     server = IntegerField()
     intoxication = IntegerField()
 

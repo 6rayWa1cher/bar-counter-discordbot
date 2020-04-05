@@ -27,7 +27,7 @@ async def consume_drink(ctx: Context, person: Person, drink: Drink):
     if person.intoxication > 100 or person.intoxication < 0:
         person.intoxication = 0
     guild: Guild = ctx.guild
-    member: Member = guild.get_member(person.id)
+    member: Member = guild.get_member(person.uid)
 
     if drink.portions_left <= 0:
         await ctx.send(conf.lang("ru_RU", "no_portions_left").format(drink.name))
@@ -123,6 +123,7 @@ class DrinkCog(commands.Cog):
         ctx, _, expected, _, drink = message_dict[mid]
         if user != expected or message.id not in message_dict:
             return
+        ctx.author = expected
         if str(reaction) == conf.lang("ru_RU", "ok-emoji"):
             log.debug("Parsed as OK")
             await self.drink(ctx, drink.name)
@@ -156,7 +157,7 @@ class DrinkCog(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    @commands.bot_has_permissions(move_members=True)
+    # @commands.bot_has_permissions(move_members=True)
     async def drink(self, ctx: Context, drink_name: str):
         """
         Drinks a drink and tails some random joke.
@@ -262,7 +263,7 @@ class DrinkCog(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
-    @commands.bot_has_permissions(add_reactions=True, send_messages=True, move_members=True)
+    # @commands.bot_has_permissions(add_reactions=True, send_messages=True, move_members=True)
     async def serve(self, ctx: Context, drink_name: str, to: Member):
         """
         Trying to give a drink to the member.
@@ -289,7 +290,7 @@ class DrinkCog(commands.Cog):
 
         await asyncio.wait(
             {msg.add_reaction(conf.lang("ru_RU", "ok-emoji")), msg.add_reaction(conf.lang("ru_RU", "no-emoji"))})
-        self.message_dict[msg.id] = (ctx, msg, to, datetime.today() + timedelta(0, 60 * 10), drink)
+        message_dict[msg.id] = (ctx, msg, to, datetime.today() + timedelta(0, 60 * 10), drink)
 
     @commands.command()
     @commands.has_role("barman")
