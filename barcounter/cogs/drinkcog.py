@@ -248,7 +248,7 @@ class DrinkCog(commands.Cog):
         try:
             drink = Drink.get(Drink.server == ctx.guild.id and Drink.name == drink_name)
             drink.delete_instance()
-            await ctx.send(conf.lang("ru_RU", "drink_deleted"))
+            await ctx.send(conf.lang("ru_RU", "drink_deleted").format(drink_name))
             log.info("Removed drink \"{0}\" from {1}".format(drink_name, ctx.guild.id))
         except DoesNotExist:
             await ctx.send(conf.lang("ru_RU", "drink_not_found").format(drink_name))
