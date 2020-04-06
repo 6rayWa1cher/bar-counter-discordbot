@@ -11,14 +11,19 @@ class AbstractModel(Model):
         database = db
 
 
+class Server(AbstractModel):
+    sid = IntegerField()
+    lang = CharField()
+
+
 class Person(AbstractModel):
     uid = IntegerField()
-    server = IntegerField()
+    server = ForeignKeyField(Server, backref="persons")
     intoxication = IntegerField()
 
 
 class Drink(AbstractModel):
-    server = IntegerField()
+    server = ForeignKeyField(Server, backref="drinks")
     name = CharField(max_length=DRINK_NAME_LENGTH)
     intoxication = IntegerField()
     portion_size = IntegerField()

@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -8,7 +7,7 @@ from discord.ext import commands
 from discord.ext.commands import Context
 
 from barcounter import confutils as conf, log, db
-from barcounter.dbentities import Drink, Person, DoesNotExist
+from barcounter.dbentities import Drink, Person, DoesNotExist, Server
 from barcounter.jokesimporter import get_joke
 
 logger = log
@@ -23,42 +22,67 @@ DEFAULT_PORTIONS_PER_DAY = 10
 message_dict = dict()
 
 
+def get_server_or_create(gid: int, preferred_locale: Optional[str]) -> Server:
+    if preferred_locale is not None and preferred_locale in conf.get_langs():
+        return Server.get_or_create(sid=gid, defaults={"lang": preferred_locale})[0]
+    else:
+        return Server.get_or_create(sid=gid, defaults={"lang": "en_US"})[0]
+
+
+def get_server_from_context(ctx: Context) -> Server:
+    return get_server_or_create(ctx.guild.id, ctx.guild.preferred_locale)
+
+
+def get_lang(gid: int, preferred_locale: Optional[str]):
+    return get_server_or_create(gid, preferred_locale).lang
+
+
+def get_lang_from_context(ctx: Context):
+    return get_lang(ctx.guild.id, ctx.guild.preferred_locale)
+
+
+def get_lang_from_guild(guild: Guild):
+    return get_lang(guild.id, guild.preferred_locale)
+
+
 async def consume_drink(ctx: Context, person: Person, drink: Drink):
     if person.intoxication > 100 or person.intoxication < 0:
         person.intoxication = 0
     guild: Guild = ctx.guild
     member: Member = guild.get_member(person.uid)
+    lang = get_lang_from_context(ctx)
 
     if drink.portions_left <= 0:
-        await ctx.send(conf.lang("ru_RU", "no_portions_left").format(drink.name))
+        await ctx.send(conf.lang(lang, "no_portions_left").format(drink.name))
     else:
         if drink.portions_left == 1:
-            await ctx.send(conf.lang("ru_RU", "last_portion").format(drink.name))
+            await ctx.send(conf.lang(lang, "last_portion").format(drink.name))
         person.intoxication += drink.intoxication
         drink.portions_left -= 1
         if person.intoxication >= 100:
             try:
                 await member.move_to(None, reason="Drank too much")
-                await ctx.send(conf.lang("ru_RU", "overdrink_kick_message").format(member.mention))
+                await ctx.send(conf.lang(lang, "overdrink_kick_message").format(member.mention))
             except Forbidden:
                 log.info("Can't kick an alcoholic: no permissions in " + guild.id)
-                await ctx.send(conf.lang("ru_RU", "overdrink_no_kick_message").format(member.mention))
+                await ctx.send(conf.lang(lang, "overdrink_no_kick_message").format(member.mention))
             finally:
                 person.intoxication = 0
         elif person.intoxication > 80:
-            await ctx.send(conf.lang("ru_RU", "pre_overdrink").format(member.display_name))
+            await ctx.send(conf.lang(lang, "pre_overdrink").format(member.display_name))
         log.info("{0} consumed drink \"{1}\" on {2}".format(member.display_name, drink.name, guild.id))
     with db.atomic():
         person.save()
         drink.save()
 
 
-def get_person_or_create(gid: int, uid: int):
-    return Person.get_or_create(server=gid, uid=uid, defaults={"intoxication": 0})[0]
+def get_person_or_create(gid: int, uid: int, preferred_locale: Optional[str]):
+    server = get_server_or_create(gid, preferred_locale)
+    return Person.get_or_create(server=server, uid=uid, defaults={"intoxication": 0})[0]
 
 
 def check_guild_drink_count(gid: int):
-    return Drink.select().where(Drink.server == gid).count() < DRINKS_PER_SERVER
+    return Drink.select(Drink).join(Server).where(Server.sid == gid).count() < DRINKS_PER_SERVER
 
 
 @aiocron.crontab("0 0 * * *")
@@ -75,7 +99,7 @@ async def erase():
         if now > time:
             try:
                 await message.delete()
-            except Forbidden or NotFound or HTTPException:
+            except (Forbidden, NotFound, HTTPException):
                 pass
             finally:
                 del message_dict[mid]
@@ -90,10 +114,11 @@ async def deintoxication():
 
 
 async def add_default_drinks(guild):
-    default_drinks = conf.lang_raw("ru_RU", "default_drinks")
+    server = get_server_or_create(guild.id, guild.preferred_locale)
+    default_drinks = conf.lang_raw(server.lang, "default_drinks")
     with db.atomic():
         for default_drink in default_drinks:
-            Drink.create(server=guild.id, name=default_drink.name, intoxication=default_drink.intoxication,
+            Drink.create(server=server, name=default_drink.name, intoxication=default_drink.intoxication,
                          portion_size=default_drink.portion, portions_per_day=default_drink.portions_per_day,
                          portions_left=default_drink.portions_per_day)
     log.info("Added drinks to {0}".format(guild.id))
@@ -118,6 +143,16 @@ class DrinkCog(commands.Cog):
         return True
 
     @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        log.info("Removing guild {0}".format(guild.id))
+        server = get_server_or_create(guild.id, guild.preferred_locale)
+        with db.atomic():
+            Drink.delete().where(Drink.server == server).execute()
+            Person.delete().where(Person.server == server).execute()
+            server.delete_instance()
+        return True
+
+    @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         log.debug("Got reaction {0} by {1} on {2}".format(str(reaction), user, str(reaction.message.guild)))
         message = reaction.message
@@ -135,7 +170,7 @@ class DrinkCog(commands.Cog):
             if not len(expected_all):
                 try:
                     await message.delete()
-                except Forbidden or NotFound or HTTPException:
+                except (Forbidden, NotFound, HTTPException):
                     pass
                 finally:
                     del message_dict[message.id]
@@ -146,7 +181,7 @@ class DrinkCog(commands.Cog):
             if not len(expected_all):
                 try:
                     await message.delete()
-                except Forbidden or NotFound or HTTPException:
+                except (Forbidden, NotFound, HTTPException):
                     pass
                 finally:
                     del message_dict[message.id]
@@ -158,24 +193,21 @@ class DrinkCog(commands.Cog):
         """
         Returns the list with available drinks
         """
-        drinks = Drink.select().where(Drink.server == ctx.guild.id)
-        # out = ""
-        # for drink in drinks:
-        #     out += conf.lang("ru_RU", "drink_info").format(str(drink.name), str(drink.portion_size))
-        #     out += '\n'
+        server = get_server_from_context(ctx)
+        lang = server.lang
+        drinks = Drink.select().where(Drink.server == server)
         out = "\n".join([
-            conf.lang("ru_RU", "drink_info").format(drink.name, drink.portion_size, drink.portions_left,
-                                                    drink.portions_per_day)
+            conf.lang(lang, "drink_info").format(drink.name, drink.portion_size, drink.portions_left,
+                                                 drink.portions_per_day)
             for drink in drinks
         ])
         if out != "":
             await ctx.send(out)
         else:
-            await ctx.send(conf.lang("ru_RU", "no_drinks"))
+            await ctx.send(conf.lang(lang, "no_drinks"))
 
     @commands.command()
     @commands.guild_only()
-    # @commands.bot_has_permissions(move_members=True)
     async def drink(self, ctx: Context, *, drink_name: str):
         """
         Drinks a drink and tails some random joke.
@@ -183,18 +215,20 @@ class DrinkCog(commands.Cog):
         Parameters:
         drink_name: name of the drink, not empty
         """
+        server = get_server_from_context(ctx)
+        lang = server.lang
         if drink_name is None or len(drink_name) > DRINK_NAME_LENGTH:
-            await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
+            await ctx.send(conf.lang(lang, "wrong_drink_name").format(DRINK_NAME_LENGTH))
             return
         try:
-            drink = Drink.get(Drink.server == ctx.guild.id and Drink.name == drink_name)
-            person = get_person_or_create(ctx.guild.id, ctx.author.id)
+            drink = Drink.get(Drink.server == server and Drink.name == drink_name)
+            person = get_person_or_create(ctx.guild.id, ctx.author.id, ctx.guild.preferred_locale)
             await consume_drink(ctx, person, drink)
             async with ctx.typing():
-                joke = get_joke("ru_RU")
-            await ctx.send(joke or conf.lang("ru_RU", "joke_not_loaded"))
+                joke = get_joke(lang)
+            await ctx.send(joke or conf.lang(lang, "joke_not_loaded"))
         except DoesNotExist:
-            await ctx.send(conf.lang("ru_RU", "drink_not_found").format(drink_name))
+            await ctx.send(conf.lang(lang, "drink_not_found").format(drink_name))
 
     @commands.command()
     @commands.has_role("barman")
@@ -213,23 +247,25 @@ class DrinkCog(commands.Cog):
         portions_per_day: portions of this drink available for one day, greater than 0 and less
         than 10000.
         """
+        server = get_server_from_context(ctx)
+        lang = server.lang
         if not 0 <= intoxication <= 100:
-            await ctx.send(conf.lang("ru_RU", "wrong_intoxication"))
+            await ctx.send(conf.lang(lang, "wrong_intoxication"))
         elif not 0 < portion_size <= PORTION_MAX_SIZE:
-            await ctx.send(conf.lang("ru_RU", "wrong_portion_size").format(PORTION_MAX_SIZE))
+            await ctx.send(conf.lang(lang, "wrong_portion_size").format(PORTION_MAX_SIZE))
         elif not 0 < portions_per_day <= PORTIONS_PER_DAY:
-            await ctx.send(conf.lang("ru_RU", "wrong_portions_per_day").format(PORTIONS_PER_DAY))
+            await ctx.send(conf.lang(lang, "wrong_portions_per_day").format(PORTIONS_PER_DAY))
         elif drink_name is None or len(drink_name) > DRINK_NAME_LENGTH:
-            await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
+            await ctx.send(conf.lang(lang, "wrong_drink_name").format(DRINK_NAME_LENGTH))
         elif not check_guild_drink_count(ctx.guild.id):
-            await ctx.send(conf.lang("ru_RU", "too_many_drinks").format(DRINKS_PER_SERVER))
+            await ctx.send(conf.lang(lang, "too_many_drinks").format(DRINKS_PER_SERVER))
         elif Drink.select().where(Drink.server == ctx.guild.id and Drink.name == drink_name).count() > 0:
-            await ctx.send(conf.lang("ru_RU", "duplicate_drink").format(drink_name))
+            await ctx.send(conf.lang(lang, "duplicate_drink").format(drink_name))
         else:
-            Drink.create(server=ctx.guild.id, name=drink_name, intoxication=intoxication,
+            Drink.create(server=server, name=drink_name, intoxication=intoxication,
                          portion_size=portion_size,
                          portions_per_day=portions_per_day, portions_left=portions_per_day)
-            await ctx.send(conf.lang("ru_RU", "drink_added").format(drink_name))
+            await ctx.send(conf.lang(lang, "drink_added").format(drink_name))
             log.info("Added drink \"{0}\" on {1}".format(drink_name, ctx.guild.id))
 
     @commands.command()
@@ -242,16 +278,18 @@ class DrinkCog(commands.Cog):
         Parameters:
         drink_name: name of the drink, not empty
         """
+        server = get_server_from_context(ctx)
+        lang = server.lang
         if drink_name is None or len(drink_name) > DRINK_NAME_LENGTH:
-            await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
+            await ctx.send(conf.lang(lang, "wrong_drink_name").format(DRINK_NAME_LENGTH))
             return
         try:
-            drink = Drink.get(Drink.server == ctx.guild.id and Drink.name == drink_name)
+            drink = Drink.get(Drink.server == server and Drink.name == drink_name)
             drink.delete_instance()
-            await ctx.send(conf.lang("ru_RU", "drink_deleted").format(drink_name))
+            await ctx.send(conf.lang(lang, "drink_deleted").format(drink_name))
             log.info("Removed drink \"{0}\" from {1}".format(drink_name, ctx.guild.id))
         except DoesNotExist:
-            await ctx.send(conf.lang("ru_RU", "drink_not_found").format(drink_name))
+            await ctx.send(conf.lang(lang, "drink_not_found").format(drink_name))
 
     @commands.command()
     @commands.has_role("barman")
@@ -263,20 +301,22 @@ class DrinkCog(commands.Cog):
         Parameters:
         drink_name: name of the drink
         """
+        server = get_server_from_context(ctx)
+        lang = server.lang
         if drink_name is not None and len(drink_name) > DRINK_NAME_LENGTH:
-            await ctx.send(conf.lang("ru_RU", "wrong_drink_name").format(DRINK_NAME_LENGTH))
+            await ctx.send(conf.lang(lang, "wrong_drink_name").format(DRINK_NAME_LENGTH))
             return
         if drink_name is None:
             (Drink.update(portions_left=Drink.portions_per_day)
-             .where(Drink.server == ctx.guild.id)
+             .where(Drink.server == server)
              ).execute()
-            await ctx.send(conf.lang("ru_RU", "restocked_all"))
+            await ctx.send(conf.lang(lang, "restocked_all"))
             log.info("Restocked all drinks on {1}".format(drink_name, ctx.guild.id))
         else:
             (Drink.update(portions_left=Drink.portions_per_day)
-             .where(Drink.server == ctx.guild.id and Drink.server == drink_name)
+             .where(Drink.server == server and Drink.name == drink_name)
              ).execute()
-            await ctx.send(conf.lang("ru_RU", "restocked_single").format(drink_name))
+            await ctx.send(conf.lang(lang, "restocked_single").format(drink_name))
             log.info("Restocked drink \"{0}\" on {1}".format(drink_name, ctx.guild.id))
 
     @commands.command()
@@ -292,22 +332,24 @@ class DrinkCog(commands.Cog):
         to: member (can be mention)
         """
         gid = ctx.guild.id
+        server = get_server_from_context(ctx)
+        lang = server.lang
         try:
-            drink = Drink.get(Drink.server == gid and Drink.name == drink_name)
+            drink = Drink.get(Drink.server == server and Drink.name == drink_name)
         except DoesNotExist:
             if not check_guild_drink_count(gid):
-                await ctx.send(conf.lang("ru_RU", "too_many_drinks").format(DRINKS_PER_SERVER))
+                await ctx.send(conf.lang(lang, "too_many_drinks").format(DRINKS_PER_SERVER))
                 return
-            drink = Drink.create(server=gid, name=drink_name, intoxication=DEFAULT_INTOXICATION,
+            drink = Drink.create(server=server, name=drink_name, intoxication=DEFAULT_INTOXICATION,
                                  portion_size=DEFAULT_PORTION_SIZE,
                                  portions_per_day=DEFAULT_PORTIONS_PER_DAY,
                                  portions_left=DEFAULT_PORTIONS_PER_DAY)
         msg = await ctx.send(
-            conf.lang("ru_RU", "serve_message").format(author=ctx.author.mention, drink=drink_name,
-                                                       portion_size=drink.portion_size))
+            conf.lang(lang, "serve_message").format(author=ctx.author.mention, drink=drink_name,
+                                                    portion_size=drink.portion_size))
 
-        await asyncio.wait(
-            {msg.add_reaction(conf.lang("ru_RU", "ok-emoji")), msg.add_reaction(conf.lang("ru_RU", "no-emoji"))})
+        await msg.add_reaction(conf.lang(lang, "ok-emoji"))
+        await msg.add_reaction(conf.lang(lang, "no-emoji"))
         message_dict[msg.id] = (ctx, msg, set(to), datetime.today() + timedelta(0, 60 * 10), drink)
 
     @commands.command()
@@ -317,7 +359,8 @@ class DrinkCog(commands.Cog):
         """
         Reset all drinks to defaults. Barman role required.
         """
-        Drink.delete().where(Drink.server == ctx.guild.id).execute()
+        server = get_server_from_context(ctx)
+        Drink.delete().where(Drink.server == server).execute()
         if to_defaults:
             await add_default_drinks(ctx.guild)
 

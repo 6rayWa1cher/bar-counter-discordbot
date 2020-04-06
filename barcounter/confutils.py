@@ -21,5 +21,10 @@ def lang(lang_code, *path):
         return package
 
 
+def get_langs():
+    package = settings.LANG
+    return package.keys()
+
+
 def limitation(name):
     return settings.LIMITATIONS[name]
