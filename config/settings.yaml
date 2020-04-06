@@ -7,6 +7,9 @@ default:
     ru_RU:
       name: "nekdo.ru"
       url: "https://nekdo.ru/random/"
+    en_US:
+      name: "official-joke-api"
+      url: "https://official-joke-api.appspot.com/random_joke"
   LIMITATIONS:
     drinks_per_server: 1024
     drink_name_length: 255
@@ -53,6 +56,49 @@ default:
         - "Последняя порция \"{0}\" лишь для тебя, дружище!"
       default_drinks:
         - name: водка
+          portion: 250
+          intoxication: 30
+          portions_per_day: 10
+    en_US:
+      name: english
+      wrong_intoxication: "Parameter intoxication is not in the range from 0 to 100."
+      wrong_portion_size: "Paramater portion_size is not positive"
+      wrong_portions_per_day: "Parameter portions_per_day is not positive"
+      wrong_drink_name: "Parameter drink_name is empty or its length more than {0} symbols"
+      drink_not_found: "Drink \"{0}\" not found"
+      drink_deleted: "Drink \"{0}\" deleted"
+      drink_added: "Added \"{0}\" to the pub"
+      duplicate_drink: "Duplicated drink found!"
+      ok-emoji: "👍"
+      no-emoji: "👎"
+      restocked_all: "All supplies are replenished! Here we go to drink again :D"
+      serve_message:
+        - "{author} offered you to drink {drink}, {portion_size}ml. Do you want it?"
+      drink_info: "{0}, one portion is {1}ml, {2}/{3}"
+      no_drinks: "There's no drinks!"
+      joke_not_loaded: "The joke disappeared in an unknown direction :("
+      too_many_drinks: "Cannot add a new drink: exceeded the limit of {0} positions"
+      pre_overdrink:
+        - "{0}'s eyes twitching..."
+        - "{0} is almost done! Barman, finish him! >:D"
+        - "{0} stoned out of his mind"
+      overdrink_kick_message:
+        - "{0} drank too much, got sent home before he broke something or someone"
+        - "{0} fell to the floor. No, it wasn't a coronavirus, but it's the time for him to get some sleep and recover..."
+        - "Heroically finishing his drink, {0} stood up with a flourish, walked a couple of meters and flew into the column. He will be cured, don't worry."
+        - "{0} ran to the toilet, will be there soon! (probably)"
+      overdrink_no_kick_message:
+        - "{0} drank too much, but the bartender instantly sobered him up with some magic"
+        - "{0} he was already blushing, but Aqua helped him... He's back ^_^"
+      no_portions_left:
+        - "{0} ran out too quickly..."
+        - "{0} ran out. Do you want something else, mate?"
+        - "God, no!\nHis Majesty, \"{0}\", completely gone :'("
+      last_portion:
+        - "It was the last drop of fine \"{0}\""
+        - "This last portion of \"{0}\" is just for you, my friend!"
+      default_drinks:
+        - name: vodka
           portion: 250
           intoxication: 30
           portions_per_day: 10
