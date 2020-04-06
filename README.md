@@ -30,7 +30,10 @@ Manually restock drinks. Requires role "barman".
 Remove all drinks from the bar. Requires role "barman".
 * `?reset 1`  
 Remove all drinks from the bar and add default drinks. Requires role "barman".
-
+* `?lang`
+Get list of supported languages. Requires Manage Guild permission.
+* `?lang <lang_code>`
+Set the lang_code and replace existing drinks with defaults. Requires Manage Guild permission.
 ## Localization
 Currently supported languages:  
 American English, en_US by [phen0menon](https://github.com/phen0menon) and [6rayWa1cher](https://github.com/6rayWa1cher)   
