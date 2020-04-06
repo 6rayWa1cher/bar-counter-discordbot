@@ -15,9 +15,24 @@ default:
     drink_name_length: 255
     portions_per_day: 10000
     portion_max_size: 10000
+    serve_timeout: 600
+  INTERNATIONAL:
+    greetings_ending: "Choose my language by {1}lang command."
+    lang_list: "Below is the list of available languages.
+          \nIf you want to add a new language, check our GitHub: https://github.com/6rayWa1cher/bar-counter-discordbot, section \"Localization\".
+          \nTo select language, type {0}lang <LANG_CODE>."
+    incorrect_language: "There's an incorrect language code."
+    missing_permissions: "You haven't the \"Manage Guild\" permission to issue this command."
   LANG:
     ru_RU:
-      name: russian
+      name: Russian
+      greetings: "Всем привет! Я бот {0}, наливаю вам напитки :D\nСправка живет на {1}help. {2}"
+      on_error: "Произошла непредвиденная ошибка :("
+      lang_selected: "Выбран \"ru_RU\" язык!"
+      missing_permissions:
+        serve: "У меня недостаточно прав для этой команды. Убедись, что у меня есть права
+        \"Перемещать участников\" и \"Добавлять реакции\""
+      missing_role: "Ты не бармен, следовательно, я не слушаюсь >:D"
       wrong_intoxication: "Параметр intoxication не в границах от 0 до 100."
       wrong_portion_size: "Параметр portion_size не положителен"
       wrong_portions_per_day: "Параметр portions_per_day не положителен"
@@ -28,6 +43,8 @@ default:
       duplicate_drink: "Такой напиток уже существует на этом сервере!"
       ok-emoji: "👍"
       no-emoji: "👎"
+      reset_complete: "Сброс успешно завершен."
+      reset_to_defaults_complete: "Восстановленны стандартные напитки"
       restocked_all: "Все запасы восполнены! И снова пить :D"
       serve_message:
         - "{author} предложил вам выпить {drink}, {portion_size}мл. Хотите выпить?"
@@ -60,7 +77,16 @@ default:
           intoxication: 30
           portions_per_day: 10
     en_US:
-      name: english
+      name: American English
+      greetings: "Hello everyone! My name is {0}, I'm serving drinks! :D\nHelp: {1}help. {2}"
+      lang_selected: "Selected an \"en_US\" language!"
+      on_error: "An unexpected error has occurred."
+      missing_permissions:
+        serve: "I haven't enough permissions for this command. Make sure I have permissions
+              \"Move members\" and \"Add reactions\""
+        drink: "I haven't enough permissions for this command. Make sure I have permission
+                             \"Move members\""
+      missing_role: "You're not barman."
       wrong_intoxication: "Parameter intoxication is not in the range from 0 to 100."
       wrong_portion_size: "Paramater portion_size is not positive"
       wrong_portions_per_day: "Parameter portions_per_day is not positive"
@@ -71,6 +97,8 @@ default:
       duplicate_drink: "Duplicated drink found!"
       ok-emoji: "👍"
       no-emoji: "👎"
+      reset_complete: "Reset completed."
+      reset_to_defaults_complete: "Default drink are restored."
       restocked_all: "All supplies are replenished! Here we go to drink again :D"
       serve_message:
         - "{author} offered you to drink {drink}, {portion_size}ml. Do you want it?"

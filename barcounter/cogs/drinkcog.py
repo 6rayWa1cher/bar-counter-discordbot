@@ -1,13 +1,12 @@
-from datetime import datetime, timedelta
-from typing import Optional
+import asyncio
 
 import aiocron as aiocron
-from discord import Guild, Member, Forbidden, NotFound, HTTPException
+from discord import Member, Forbidden
 from discord.ext import commands
-from discord.ext.commands import Context
+from discord.ext.commands import Bot
 
-from barcounter import confutils as conf, log, db
-from barcounter.dbentities import Drink, Person, DoesNotExist, Server
+from barcounter.cogs.helpers import *
+from barcounter.dbentities import Drink, Person, DoesNotExist
 from barcounter.jokesimporter import get_joke
 
 logger = log
@@ -19,30 +18,6 @@ PORTION_MAX_SIZE = conf.limitation("portion_max_size")
 DEFAULT_INTOXICATION = 20
 DEFAULT_PORTION_SIZE = 100
 DEFAULT_PORTIONS_PER_DAY = 10
-message_dict = dict()
-
-
-def get_server_or_create(gid: int, preferred_locale: Optional[str]) -> Server:
-    if preferred_locale is not None and preferred_locale in conf.get_langs():
-        return Server.get_or_create(sid=gid, defaults={"lang": preferred_locale})[0]
-    else:
-        return Server.get_or_create(sid=gid, defaults={"lang": "en_US"})[0]
-
-
-def get_server_from_context(ctx: Context) -> Server:
-    return get_server_or_create(ctx.guild.id, ctx.guild.preferred_locale)
-
-
-def get_lang(gid: int, preferred_locale: Optional[str]):
-    return get_server_or_create(gid, preferred_locale).lang
-
-
-def get_lang_from_context(ctx: Context):
-    return get_lang(ctx.guild.id, ctx.guild.preferred_locale)
-
-
-def get_lang_from_guild(guild: Guild):
-    return get_lang(guild.id, guild.preferred_locale)
 
 
 async def consume_drink(ctx: Context, person: Person, drink: Drink):
@@ -76,11 +51,6 @@ async def consume_drink(ctx: Context, person: Person, drink: Drink):
         drink.save()
 
 
-def get_person_or_create(gid: int, uid: int, preferred_locale: Optional[str]):
-    server = get_server_or_create(gid, preferred_locale)
-    return Person.get_or_create(server=server, uid=uid, defaults={"intoxication": 0})[0]
-
-
 def check_guild_drink_count(gid: int):
     return Drink.select(Drink).join(Server).where(Server.sid == gid).count() < DRINKS_PER_SERVER
 
@@ -91,21 +61,6 @@ async def restock():
     log.info("Restocked every server")
 
 
-@aiocron.crontab("*/10 * * * *")
-async def erase():
-    now = datetime.today()
-    for mid, tpl in message_dict.items():
-        ctx, message, user, time, drink = tpl
-        if now > time:
-            try:
-                await message.delete()
-            except (Forbidden, NotFound, HTTPException):
-                pass
-            finally:
-                del message_dict[mid]
-                log.info("Deleted message {0} on {1} by time exceeding".format(message.id, ctx.guild.id))
-
-
 @aiocron.crontab("* * * * *")
 async def deintoxication():
     delta = 1
@@ -113,15 +68,23 @@ async def deintoxication():
     (Person.update(intoxication=0).where(Person.intoxication < delta)).execute()
 
 
-async def add_default_drinks(guild):
-    server = get_server_or_create(guild.id, guild.preferred_locale)
-    default_drinks = conf.lang_raw(server.lang, "default_drinks")
-    with db.atomic():
-        for default_drink in default_drinks:
-            Drink.create(server=server, name=default_drink.name, intoxication=default_drink.intoxication,
-                         portion_size=default_drink.portion, portions_per_day=default_drink.portions_per_day,
-                         portions_left=default_drink.portions_per_day)
-    log.info("Added drinks to {0}".format(guild.id))
+async def give_a_drink(ctx, member, drink):
+    lang = get_lang_from_context(ctx)
+    person = get_person_or_create(ctx.guild.id, member.id, ctx.guild.preferred_locale)
+    await consume_drink(ctx, person, drink)
+    async with ctx.typing():
+        joke = get_joke(lang)
+    await ctx.send(joke or conf.lang(lang, "joke_not_loaded"))
+
+
+def not_barman(coro):
+    async def process(self, ctx, error):
+        if isinstance(error, commands.MissingRole) and error.missing_role == "barman":
+            await ctx.send(get_lang_from_context(ctx), "missing_role")
+        else:
+            await coro(self, ctx, error)
+
+    return process
 
 
 class DrinkCog(commands.Cog):
@@ -130,16 +93,20 @@ class DrinkCog(commands.Cog):
     """
 
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: Bot = bot
 
     @commands.Cog.listener()
     async def on_ready(self):
         log.info("Successfully connected and ready")
 
     @commands.Cog.listener()
-    async def on_guild_join(self, guild):
+    async def on_guild_join(self, guild: Guild):
         log.info("Joined guild {0}".format(guild.id))
         await add_default_drinks(guild)
+        server = get_server_or_create(guild.id, guild.preferred_locale)
+        if guild.system_channel is not None:
+            await guild.system_channel.send(
+                conf.lang(server.lang, "greetings").format(self.bot.user.name, self.bot.command_prefix))
         return True
 
     @commands.Cog.listener()
@@ -151,41 +118,6 @@ class DrinkCog(commands.Cog):
             Person.delete().where(Person.server == server).execute()
             server.delete_instance()
         return True
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        log.debug("Got reaction {0} by {1} on {2}".format(str(reaction), user, str(reaction.message.guild)))
-        message = reaction.message
-        mid = message.id
-        if mid not in message_dict:
-            return
-        ctx, _, expected_all, _, drink = message_dict[mid]
-        if user not in expected_all or message.id not in message_dict:
-            return
-        if str(reaction) == conf.lang("ru_RU", "ok-emoji"):
-            expected_all.remove(user)
-            log.debug("Parsed as OK")
-            ctx.author = user
-            await self.drink(ctx, drink_name=drink.name)
-            if not len(expected_all):
-                try:
-                    await message.delete()
-                except (Forbidden, NotFound, HTTPException):
-                    pass
-                finally:
-                    del message_dict[message.id]
-                log.info("Removed message {0}".format(message.id, ))
-        elif str(reaction) == conf.lang("ru_RU", "no-emoji"):
-            log.debug("Parsed as NO")
-            expected_all.remove(user)
-            if not len(expected_all):
-                try:
-                    await message.delete()
-                except (Forbidden, NotFound, HTTPException):
-                    pass
-                finally:
-                    del message_dict[message.id]
-                log.info("Removed message {0}".format(message.id, ))
 
     @commands.command()
     @commands.guild_only()
@@ -208,6 +140,7 @@ class DrinkCog(commands.Cog):
 
     @commands.command()
     @commands.guild_only()
+    @commands.bot_has_guild_permissions(move_members=True)
     async def drink(self, ctx: Context, *, drink_name: str):
         """
         Drinks a drink and tails some random joke.
@@ -222,13 +155,16 @@ class DrinkCog(commands.Cog):
             return
         try:
             drink = Drink.get(Drink.server == server and Drink.name == drink_name)
-            person = get_person_or_create(ctx.guild.id, ctx.author.id, ctx.guild.preferred_locale)
-            await consume_drink(ctx, person, drink)
-            async with ctx.typing():
-                joke = get_joke(lang)
-            await ctx.send(joke or conf.lang(lang, "joke_not_loaded"))
         except DoesNotExist:
             await ctx.send(conf.lang(lang, "drink_not_found").format(drink_name))
+        else:
+            await give_a_drink(ctx, ctx.author, drink)
+
+    @drink.error
+    async def drink_error(self, ctx, error):
+        if isinstance(error, commands.BotMissingPermissions):
+            await ctx.send(conf.lang(get_lang_from_context(ctx), "missing_permissions", "drink"))
+            error.bcdb_checked = True
 
     @commands.command()
     @commands.has_role("barman")
@@ -268,6 +204,11 @@ class DrinkCog(commands.Cog):
             await ctx.send(conf.lang(lang, "drink_added").format(drink_name))
             log.info("Added drink \"{0}\" on {1}".format(drink_name, ctx.guild.id))
 
+    @add.error
+    @not_barman
+    def add_error(self, ctx, error):
+        pass
+
     @commands.command()
     @commands.has_role("barman")
     @commands.guild_only()
@@ -290,6 +231,11 @@ class DrinkCog(commands.Cog):
             log.info("Removed drink \"{0}\" from {1}".format(drink_name, ctx.guild.id))
         except DoesNotExist:
             await ctx.send(conf.lang(lang, "drink_not_found").format(drink_name))
+
+    @remove.error
+    @not_barman
+    def remove_error(self, ctx, error):
+        pass
 
     @commands.command()
     @commands.has_role("barman")
@@ -319,9 +265,14 @@ class DrinkCog(commands.Cog):
             await ctx.send(conf.lang(lang, "restocked_single").format(drink_name))
             log.info("Restocked drink \"{0}\" on {1}".format(drink_name, ctx.guild.id))
 
+    @restock.error
+    @not_barman
+    def restock_error(self, ctx, error):
+        pass
+
     @commands.command()
     @commands.guild_only()
-    # @commands.bot_has_permissions(add_reactions=True, send_messages=True, move_members=True)
+    @commands.bot_has_guild_permissions(add_reactions=True, move_members=True)
     async def serve(self, ctx: Context, drink_name: str, to: commands.Greedy[Member]):
         """
         Trying to give a drink to the member.
@@ -350,7 +301,31 @@ class DrinkCog(commands.Cog):
 
         await msg.add_reaction(conf.lang(lang, "ok-emoji"))
         await msg.add_reaction(conf.lang(lang, "no-emoji"))
-        message_dict[msg.id] = (ctx, msg, set(to), datetime.today() + timedelta(0, 60 * 10), drink)
+        expected = set(to)
+
+        def check(reaction, user):
+            return user in expected and str(reaction.emoji) in {conf.lang(lang, "ok-emoji"),
+                                                                conf.lang(lang, "no-emoji")}
+
+        while len(expected):
+            try:
+                reaction, user = await self.bot.wait_for("add_reaction", timeout=conf.limitation("serve_timeout"),
+                                                         check=check)
+            except asyncio.TimeoutError:
+                break
+            else:
+                expected.remove(user)
+                if str(reaction) == conf.lang(lang, "ok-emoji"):
+                    await give_a_drink(ctx, user, drink)
+        await msg.delete()
+        log.info("Deleted message {0} on {1} by time exceeding".format(msg.id, ctx.guild.id))
+
+    @serve.error
+    async def serve_error(self, ctx, error):
+        lang = get_lang_from_context(ctx)
+        if isinstance(error, commands.BotMissingPermissions):
+            await ctx.send(conf.lang(lang, "missing_permissions", "serve"))
+            error.bcdb_checked = True
 
     @commands.command()
     @commands.has_role("barman")
@@ -360,9 +335,18 @@ class DrinkCog(commands.Cog):
         Reset all drinks to defaults. Barman role required.
         """
         server = get_server_from_context(ctx)
+        lang = server.lang
         Drink.delete().where(Drink.server == server).execute()
         if to_defaults:
             await add_default_drinks(ctx.guild)
+            await ctx.send(conf.lang(lang, "reset_to_defaults_complete"))
+        else:
+            await ctx.send(conf.lang(lang, "reset_complete"))
+
+    @reset.error
+    @not_barman
+    def reset_error(self, ctx, error):
+        pass
 
 
 def setup(bot):

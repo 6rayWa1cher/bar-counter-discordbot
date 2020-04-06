@@ -11,9 +11,11 @@ def lang_raw(lang_code, *path):
     return package
 
 
-def lang(lang_code, *path):
+def lang(lang_code, *path, fail_to_en_us=True):
     package = settings.LANG[lang_code]
     for p in path:
+        if p not in package and lang_code != "en_US" and fail_to_en_us:
+            return lang("en_US", *path)
         package = package[p]
     if isinstance(package, Iterable) and not isinstance(package, str):
         return random.choice(list(package))
@@ -24,6 +26,10 @@ def lang(lang_code, *path):
 def get_langs():
     package = settings.LANG
     return package.keys()
+
+
+def international(name):
+    return settings.INTERNATIONAL[name]
 
 
 def limitation(name):

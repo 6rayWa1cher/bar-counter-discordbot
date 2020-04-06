@@ -1,5 +1,5 @@
 # bar-counter-discordbot
-This bot allows you to drink your mates in discord-chat :D  
+This bot allows you to drink your mates in your discord-chat :D  
 Built using Python, discord.py and peewee.  
 
 ## Concept
@@ -32,7 +32,21 @@ Remove all drinks from the bar. Requires role "barman".
 Remove all drinks from the bar and add default drinks. Requires role "barman".
 
 ## Localization
-Currently supported languages: russian (ru_RU)
+Currently supported languages:  
+American English, en_US by [phen0menon](https://github.com/phen0menon) and [6rayWa1cher](https://github.com/6rayWa1cher)   
+Russian, ru_RU by [6rayWa1cher](https://github.com/6rayWa1cher)  
+
+Steps to add a new language:
+1) Fork this repository
+2) Check `settings.yaml`. Copy everything from `en_US` section to new section with new lang code.
+3) Change `name` to the name of your language
+4) Translate and/or adapt every string. Don't hesitate to change them or add more!  
+Parts like `{0}` are placeholders and they're very important.
+5) Optionally add more drinks in `default_drinks`
+6) Add new section to `JOKE_SOURCE`. Find a resource with some funny jokes :)
+7) Change `barcounter/jokesimporter.py` to make a new jokes source. If you have some troubles or you don't have
+programming skills, ask a community in Issues section.
+8) Localization is over. Now commit and make a pull request ^_^
 
 ## Installation
 1) Register a new bot on https://discordapp.com/developers/applications/ and get token on "build-a-bot" page.
@@ -61,7 +75,7 @@ Currently supported languages: russian (ru_RU)
    source venv/bin/activate
    python3 -m barcounter
    ```
-7) To add a bot to your server, modify and click the url:
+7) To add the bot to your server, modify and click the url:
 `https://discordapp.com/oauth2/authorize?client_id=<YOUR_BOT_CLIENT_ID>&scope=bot&permissions=285215808`
 
 ## Contributing
