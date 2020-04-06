@@ -39,7 +39,7 @@ def _en_us_get_joke():
         res = requests.get(package.url)
         res.encoding = 'utf-8'
         res.raise_for_status()
-        json_res = a.json()
+        json_res = res.json()
         joke_setup = json_res.get('setup', None)
         joke_punchline = json_res.get('punchline', None)
         assert joke_setup is not None
