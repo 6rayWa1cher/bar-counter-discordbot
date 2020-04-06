@@ -106,7 +106,9 @@ class DrinkCog(commands.Cog):
         server = get_server_or_create(guild.id, guild.preferred_locale)
         if guild.system_channel is not None:
             await guild.system_channel.send(
-                conf.lang(server.lang, "greetings").format(self.bot.user.name, self.bot.command_prefix))
+                conf.lang(server.lang, "greetings").format(self.bot.user.name, self.bot.command_prefix,
+                                                           conf.international("greetings_ending").format(
+                                                               self.bot.command_prefix)))
         return True
 
     @commands.Cog.listener()

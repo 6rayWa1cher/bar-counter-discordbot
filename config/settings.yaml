@@ -17,7 +17,7 @@ default:
     portion_max_size: 10000
     serve_timeout: 600
   INTERNATIONAL:
-    greetings_ending: "Choose my language by {1}lang command."
+    greetings_ending: "Choose my language by {0}lang command."
     lang_list: "Below is the list of available languages.
           \nIf you want to add a new language, check our GitHub: https://github.com/6rayWa1cher/bar-counter-discordbot, section \"Localization\".
           \nTo select language, type {0}lang <LANG_CODE>."
