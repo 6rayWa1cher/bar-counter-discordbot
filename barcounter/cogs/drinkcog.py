@@ -311,7 +311,7 @@ class DrinkCog(commands.Cog):
 
         while len(expected):
             try:
-                reaction, user = await self.bot.wait_for("add_reaction", timeout=conf.limitation("serve_timeout"),
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=conf.limitation("serve_timeout"),
                                                          check=check)
             except asyncio.TimeoutError:
                 break
