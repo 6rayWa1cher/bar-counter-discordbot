@@ -1,5 +1,5 @@
 # bar-counter-discordbot
-This bot allows you to drink your mates in your discord-chat :D  
+This bot allows you to make your mates drunk in your discord-chat :D  
 Built using Python, discord.py and peewee.  
 
 ## Concept
