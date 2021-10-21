@@ -20,11 +20,11 @@ DEFAULT_PORTION_SIZE = 100
 DEFAULT_PORTIONS_PER_DAY = 10
 
 
-async def consume_drink(ctx: Context, person: Person, drink: Drink):
+async def consume_drink(ctx: Context, person: Person, drink: Drink, member: Member):
     if person.intoxication > 100 or person.intoxication < 0:
         person.intoxication = 0
     guild: Guild = ctx.guild
-    member: Member = guild.get_member(person.uid)
+    # member: Member = guild.get_member(person.uid)
     lang = get_lang_from_context(ctx)
 
     if drink.portions_left <= 0:
@@ -71,7 +71,7 @@ async def deintoxication():
 async def give_a_drink(ctx, member, drink):
     lang = get_lang_from_context(ctx)
     person = get_person_or_create(ctx.guild.id, member.id, ctx.guild.preferred_locale)
-    await consume_drink(ctx, person, drink)
+    await consume_drink(ctx, person, drink, member)
     async with ctx.typing():
         joke = get_joke(lang)
     await ctx.send(joke or conf.lang(lang, "joke_not_loaded"))
